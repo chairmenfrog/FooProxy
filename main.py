@@ -1,4 +1,4 @@
-#coding:utf-8
+# coding:utf-8
 
 """
     @author  : linkin
@@ -6,15 +6,12 @@
     @date    : 2018-10-04
 """
 import logging.config
-from const.settings         import LOG_CONF
+
 from components.workstation import Workstation
+from const.settings import LOG_CONF
 
 logging.config.fileConfig(LOG_CONF)
 
-if __name__ == '__main__' :
+if __name__ == '__main__':
     workstation = Workstation()
     workstation.work()
-
-
-
-

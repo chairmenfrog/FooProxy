@@ -1,4 +1,4 @@
-#coding:utf-8
+# coding:utf-8
 
 """
     @author  : linkin
@@ -7,44 +7,47 @@
 """
 
 import logging
-from APIserver.apiserver    import app
-from components.collector   import Collector
-from components.validator   import Validator
-from components.detector    import Detector
-from components.scanner     import Scaner
-from components.tentacle    import Tentacle
-from multiprocessing        import Pool
-from multiprocessing        import Manager
-from config.config          import MODE
-from const.settings         import RUN_FUNC
+from multiprocessing import Manager
+from multiprocessing import Pool
+
+from APIserver.apiserver import app
+from components.collector import Collector
+from components.detector import Detector
+from components.scanner import Scaner
+from components.tentacle import Tentacle
+from components.validator import Validator
+from config.config import MODE
+from const.settings import RUN_FUNC
 
 logger = logging.getLogger()
+
 
 class Workstation(object):
     """
     整个项目的启动工作面板
     """
+
     def __init__(self):
         self.collector = Collector()
         self.validator = Validator()
-        self.detector  = Detector()
-        self.scanner   = Scaner()
-        self.tentacle  = Tentacle()
+        self.detector = Detector()
+        self.scanner = Scaner()
+        self.tentacle = Tentacle()
         self.proxyList = Manager().list()
 
-    def run_validator(self,proxyList):
+    def run_validator(self, proxyList):
         self.validator.run(proxyList)
 
-    def run_collector(self,proxyList):
+    def run_collector(self, proxyList):
         self.collector.run(proxyList)
 
-    def run_detector(self,*params):
+    def run_detector(self, *params):
         self.detector.run()
 
-    def run_scanner(self,*params):
+    def run_scanner(self, *params):
         self.scanner.run()
 
-    def run_tentacle(self,*params):
+    def run_tentacle(self, *params):
         self.tentacle.run()
 
     def work(self):
@@ -58,10 +61,7 @@ class Workstation(object):
         func = []
         for i in MODE:
             if MODE[i]:
-                func.append(eval('self.'+RUN_FUNC[i]))
-        [pool.apply_async(fun,args=(self.proxyList,)) for fun in func]
+                func.append(eval('self.' + RUN_FUNC[i]))
+        [pool.apply_async(fun, args=(self.proxyList,)) for fun in func]
         pool.close()
         app.run()
-
-
-

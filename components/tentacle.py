@@ -1,37 +1,40 @@
-#coding:utf-8
+# coding:utf-8
 
 """
     @author  : linkin
     @email   : yooleak@outlook.com
     @date    : 2018-11-03
 """
-import time
+import asyncio
 import datetime
 import logging
 import random
-import asyncio
+import time
+from string import ascii_letters
+
 import aiohttp
-from string             import ascii_letters
-from tools.util         import format_proxies
-from tools.util         import time_to_date
-from config.config      import VALIDATE_LOCAL
-from config.config      import MAX_V_COUNT
-from const.settings     import headers
-from const.settings     import TARGETS_DB
-from config.config      import targets
-from config.config      import AGO
-from config.config      import MAX_T_LEN
-from config.config      import TARGET_EXPIRE
-from config.config      import TIMEOUT
-from config.config      import RETRIES
-from config.DBsettings  import _DB_SETTINGS
-from tools.util         import gen_target_db_name
-from tools.util         import get_ip_addr
-from tools.util         import internet_access
-from tools.async_tools  import send_async_http
+
 from components.dbhelper import Database
+from config.DBsettings import _DB_SETTINGS
+from config.config import AGO
+from config.config import MAX_T_LEN
+from config.config import MAX_V_COUNT
+from config.config import RETRIES
+from config.config import TARGET_EXPIRE
+from config.config import TIMEOUT
+from config.config import VALIDATE_LOCAL
+from config.config import targets
+from const.settings import TARGETS_DB
+from const.settings import headers
+from tools.async_tools import send_async_http
+from tools.util import format_proxies
+from tools.util import gen_target_db_name
+from tools.util import get_ip_addr
+from tools.util import internet_access
+from tools.util import time_to_date
 
 logger = logging.getLogger('Tentacle')
+
 
 class Tentacle(object):
     """
@@ -39,7 +42,8 @@ class Tentacle(object):
     每一个获得的代理IP针对目标网址进行逐个验证，并对本地存有的目标库
     进行定时检测扫描，剔除无效的代理IP
     """
-    def __init__(self,targets=targets):
+
+    def __init__(self, targets=targets):
         """
         初始化
         :param targets: 默认加载config中的目标url列表targets
@@ -76,12 +80,12 @@ class Tentacle(object):
                     continue
                 elif url:
                     _targets.add(url)
-        [allowed_targets.extend(i) for i in (self.targets,_targets)]
+        [allowed_targets.extend(i) for i in (self.targets, _targets)]
         for url in allowed_targets:
             _name = gen_target_db_name(url)
             _data = self.db.all(tname=_name)
             _dict[url] = _data
-            logger.info('Loaded %d proxies from db: %s '%(len(_data),_name))
+            logger.info('Loaded %d proxies from db: %s ' % (len(_data), _name))
         return _dict
 
     def save_targets(self):
@@ -94,15 +98,15 @@ class Tentacle(object):
         for i in targets:
             inside_data = self.db.select({'url': i}, tname=TARGETS_DB)
             if inside_data:
-                self.db.update({'url': i},{'validTime':now.isoformat()},tname=TARGETS_DB)
+                self.db.update({'url': i}, {'validTime': now.isoformat()}, tname=TARGETS_DB)
                 continue
             data['url'] = i
             data['createdTime'] = now.isoformat()
             data['validTime'] = now.isoformat()
             data['db'] = gen_target_db_name(i)
-            data['_id'] = str(j + random.randint(0,100000))+\
-                          ascii_letters[random.randint(0,52)]+\
-                          str(int(time.time()*1000))
+            data['_id'] = str(j + random.randint(0, 100000)) + \
+                          ascii_letters[random.randint(0, 52)] + \
+                          str(int(time.time() * 1000))
             self.db.save(data, tname=TARGETS_DB)
 
     def clean_expired_targets(self):
@@ -118,7 +122,7 @@ class Tentacle(object):
             if tar['validTime'] < expired_created_time:
                 db_name = gen_target_db_name(tar['url'])
                 _std_count = self.db.handler[db_name].drop()
-                self.db.delete({'url':tar['url']},tname=TARGETS_DB)
+                self.db.delete({'url': tar['url']}, tname=TARGETS_DB)
                 logger.info('Deleted expired target website proxy collection:(%s)' % (db_name))
 
     def run(self):
@@ -143,22 +147,22 @@ class Tentacle(object):
             try:
                 _dict = self.load_target_db()
                 for url in _dict:
-                    logger.info('Start the validation of the target url:%s'%url)
+                    logger.info('Start the validation of the target url:%s' % url)
                     data = _dict[url]
                     _len = len(data)
                     _count = MAX_V_COUNT if MAX_V_COUNT <= _len else _len
                     start = 0
                     while 1:
-                        _data = data[start:start+_count]
+                        _data = data[start:start + _count]
                         if not _data:
-                            logger.info('Target url:%s -> validation finished,total proxies:%d'%(url,_len))
+                            logger.info('Target url:%s -> validation finished,total proxies:%d' % (url, _len))
                             break
                         tasks = []
                         for i in _data:
                             ip = i['ip']
                             port = i['port']
-                            proxy = format_proxies(':'.join([ip,port]))
-                            tasks.append(self.async_visit_target(self.db,url,proxy,i,sem,session))
+                            proxy = format_proxies(':'.join([ip, port]))
+                            tasks.append(self.async_visit_target(self.db, url, proxy, i, sem, session))
                         loop.run_until_complete(asyncio.gather(*tasks))
                         start += _count
                 time.sleep(VALIDATE_LOCAL)
@@ -167,7 +171,7 @@ class Tentacle(object):
                 logger.error('%s,msg: %s ' % (e.__class__, e))
                 logger.error('Shut down the Tentacle.')
 
-    async def async_visit_target(self,db,url,proxy,bullet,sem,session,scan=True):
+    async def async_visit_target(self, db, url, proxy, bullet, sem, session, scan=True):
         """
         异步请求协程，对单个代理IP数据进行异步验证
         :param db:处理操作的数据库
@@ -184,7 +188,7 @@ class Tentacle(object):
             'anony_type': bullet['anony_type'],
             'address': bullet['address'],
             'createdTime': bullet['createdTime'],
-            'score':bullet['score'],
+            'score': bullet['score'],
             'test_count': int(bullet['test_count']) + 1,
             'url': url,
         }
@@ -203,14 +207,14 @@ class Tentacle(object):
                 data['resp_time'] = str(t) + 's'
                 data['valid_time'] = time_to_date(int(time.time()))
                 if scan:
-                    self.update(db,data,db_name)
+                    self.update(db, data, db_name)
                 else:
-                    self.success(db,data,db_name)
+                    self.success(db, data, db_name)
             else:
                 if scan:
-                    self.fail(db,data,db_name)
+                    self.fail(db, data, db_name)
 
-    async def specified_validate(self,db,bullet,session,sem):
+    async def specified_validate(self, db, bullet, session, sem):
         """
         初次入库验证协程，内置在Validator中的Tentacle调用此协程进行代理Ip
         从采集器中采集验证后进行初次入目标库的验证操作
@@ -224,11 +228,11 @@ class Tentacle(object):
         proxy = format_proxies(':'.join([ip, port]))
         max_thread_count = MAX_T_LEN if MAX_T_LEN <= len(self.targets) else len(self.targets)
         allowed_targets = self.targets[:max_thread_count]
-        tasks = [self.async_visit_target(db,i,proxy,bullet,sem,session,scan=False) for i in allowed_targets]
+        tasks = [self.async_visit_target(db, i, proxy, bullet, sem, session, scan=False) for i in allowed_targets]
         resp = asyncio.gather(*tasks)
         await resp
 
-    def success(self,db,bullet,tname):
+    def success(self, db, bullet, tname):
         """
         初次在Validator中调用触手成功验证目标url后进行入库操作
         :param db: 处理操作的数据库对象
@@ -237,21 +241,21 @@ class Tentacle(object):
         """
         ip = bullet['ip']
         port = bullet['port']
-        _data = db.select({'ip':ip,'port':port},tname=tname)
-        bullet['address'] = get_ip_addr(ip) if bullet['address'] == 'unknown' or\
+        _data = db.select({'ip': ip, 'port': port}, tname=tname)
+        bullet['address'] = get_ip_addr(ip) if bullet['address'] == 'unknown' or \
                                                bullet['address'] == '' else bullet['address']
         if _data:
             bullet['_id'] = _data[0]['_id']
-            self.update(db,bullet,tname)
+            self.update(db, bullet, tname)
             return
         bullet['createdTime'] = time_to_date(int(time.time()))
         try:
-            db.save(bullet,tname=tname)
+            db.save(bullet, tname=tname)
         except Exception as e:
             logger.error('%s,msg: %s ' % (e.__class__, e))
             return
 
-    def update(self,db,bullet,tname):
+    def update(self, db, bullet, tname):
         """
         验证成功后对已存在于目标库中的代理数据进行更新
         :param db: 处理操作的数据库对象
@@ -260,13 +264,13 @@ class Tentacle(object):
         """
         ip = bullet['ip']
         port = bullet['port']
-        if bullet['createdTime']=='':
-            bullet['createdTime']=time_to_date(int(time.time()))
+        if bullet['createdTime'] == '':
+            bullet['createdTime'] = time_to_date(int(time.time()))
         bullet['address'] = get_ip_addr(ip) if bullet['address'] == 'unknown' or \
                                                bullet['address'] == '' else bullet['address']
-        db.update({'ip':ip,'port':port},bullet,tname=tname)
+        db.update({'ip': ip, 'port': port}, bullet, tname=tname)
 
-    def fail(self,db,bullet,tname):
+    def fail(self, db, bullet, tname):
         """
         验证失败对已存在于目标库中的代理数据进行失败操作
         :param db: 处理操作的数据库对象
@@ -276,9 +280,9 @@ class Tentacle(object):
         try:
             ip = bullet['ip']
             port = bullet['port']
-            proxy = ':'.join([ip,port])
-            db.delete({'ip':ip,'port':port},tname=tname)
-            logger.warning('Deleted inoperative proxy %s in %s'%(proxy,tname))
+            proxy = ':'.join([ip, port])
+            db.delete({'ip': ip, 'port': port}, tname=tname)
+            logger.warning('Deleted inoperative proxy %s in %s' % (proxy, tname))
         except Exception as e:
             logger.error('%s,msg: %s ' % (e.__class__, e))
             return

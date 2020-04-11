@@ -1,42 +1,46 @@
-#coding:utf-8
+# coding:utf-8
 
 """
     @author  : linkin
     @email   : yooleak@outlook.com
     @date    : 2018-10-08
 """
-import time
-import json
-import math
-import logging
-import aiohttp
 import asyncio
-from config.DBsettings      import _DB_SETTINGS
-from config.DBsettings      import _TABLE
-from config.config          import COROUTINE_MAX
-from config.config          import LOCAL_AMOUNT
-from config.config          import VALIDATE_LOCAL
-from const.settings         import mul_validate_url
-from const.settings         import v_headers
-from components.rator       import Rator
-from components.dbhelper    import Database
-from tools.util             import find_proxy
-from tools.util             import get_proxy
+import json
+import logging
+import math
+import time
+
+import aiohttp
+
+from components.dbhelper import Database
+from components.rator import Rator
+from config.DBsettings import _DB_SETTINGS
+from config.DBsettings import _TABLE
+from config.config import COROUTINE_MAX
+from config.config import LOCAL_AMOUNT
+from config.config import VALIDATE_LOCAL
+from const.settings import mul_validate_url
+from const.settings import v_headers
+from tools.util import find_proxy
+from tools.util import get_proxy
 
 logger = logging.getLogger('Scanner')
+
 
 class Scaner(object):
     """
     本地扫描器，对本地standby有效代理数据库中的数据进行周期验证
     保证其以后调用数据的实时验证，通过内置打分器进行打分存储
     """
+
     def __init__(self):
         self.db = Database(_DB_SETTINGS)
         self.db.table = _TABLE['standby']
         self.rator = Rator(self.db)
         self.standby_data = []
 
-    def check_allot(self,proxies):
+    def check_allot(self, proxies):
         """
         将扫描器一次取出的要验证的本地standby数据库有效代理数据进行分组
         分成几组则有多少个异步协程来验证IP代理数据，一组中有多少个代理IP
@@ -70,15 +74,15 @@ class Scaner(object):
         p_len = len(proxies)
         offset = 20
         params_dict = {}
-        if p_len<=offset:
-            return {'&'.join(['ip_ports%5B%5D={}%3A{}'.format(i['ip'],i['port'])
-                             for i in proxies]):proxies}
+        if p_len <= offset:
+            return {'&'.join(['ip_ports%5B%5D={}%3A{}'.format(i['ip'], i['port'])
+                              for i in proxies]): proxies}
         else:
-            base = math.ceil(p_len/offset)
-            p_groups = [proxies[i*offset:(i+1)*offset] for i in range(base)]
+            base = math.ceil(p_len / offset)
+            p_groups = [proxies[i * offset:(i + 1) * offset] for i in range(base)]
             for group in p_groups:
-                url_str = '&'.join(['ip_ports%5B%5D={}%3A{}'.format(i['ip'],i['port'])
-                             for i in group])
+                url_str = '&'.join(['ip_ports%5B%5D={}%3A{}'.format(i['ip'], i['port'])
+                                    for i in group])
                 params_dict[url_str] = group
             return params_dict
 
@@ -91,17 +95,17 @@ class Scaner(object):
         loop = asyncio.get_event_loop()
         while 1:
             try:
-                if self.standby_data :
-                    pen = len(self.standby_data )
+                if self.standby_data:
+                    pen = len(self.standby_data)
                     logger.info('Start the validation of the local "standby" database,length : %d ' % pen)
                     pop_len = pen if pen <= LOCAL_AMOUNT else LOCAL_AMOUNT
                     stanby_proxies = [self.standby_data.pop() for x in range(pop_len)]
                     prams_dict = self.check_allot(stanby_proxies)
                     semaphore = asyncio.Semaphore(COROUTINE_MAX)
                     logger.info('Start to verify the standby proxy data,amount: %d ' % pop_len)
-                    tasks = [asyncio.ensure_future(self.validate(i,prams_dict[i],semaphore)) for i in prams_dict]
+                    tasks = [asyncio.ensure_future(self.validate(i, prams_dict[i], semaphore)) for i in prams_dict]
                     loop.run_until_complete(asyncio.gather(*tasks))
-                    logger.info('Local validation finished.Left standby proxies:%d' % len(self.standby_data ))
+                    logger.info('Local validation finished.Left standby proxies:%d' % len(self.standby_data))
                     time.sleep(VALIDATE_LOCAL)
                 else:
                     self.standby_data = self.db.all()
@@ -112,7 +116,7 @@ class Scaner(object):
                 logger.info('Scanner shuts down.')
                 return
 
-    async def validate(self,url_str, proxies,semaphore):
+    async def validate(self, url_str, proxies, semaphore):
         """
         异步验证协程，对本地standby中的代理数据进行异步验证
         :param url_str: IP代理分组中一个组的验证查询参数字符串
@@ -124,8 +128,8 @@ class Scaner(object):
             async with aiohttp.ClientSession() as session:
                 while 1:
                     try:
-                        async with session.get(mul_validate_url+url_str,
-                                       headers=v_headers,proxy=_proxy) as response:
+                        async with session.get(mul_validate_url + url_str,
+                                               headers=v_headers, proxy=_proxy) as response:
                             data = await response.text(encoding='utf-8')
                             data = json.loads(data)
                     except Exception as e:
@@ -136,7 +140,7 @@ class Scaner(object):
                         continue
                     else:
                         for res in data['msg']:
-                            proxy = find_proxy(res['ip'],res['port'],proxies)
+                            proxy = find_proxy(res['ip'], res['port'], proxies)
                             try:
                                 if 'anony' in res and 'time' in res:
                                     proxy['anony_type'] = res['anony']

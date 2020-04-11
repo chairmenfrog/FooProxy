@@ -5,39 +5,43 @@
     @email   : yooleak@outlook.com
     @date    : 2018-10-05
 """
-import pymongo
 import logging
-from inspect            import isfunction
-from const.settings     import con_map
+from inspect import isfunction
+
+import pymongo
+
+from const.settings import con_map
 
 logger = logging.getLogger()
+
 
 class Database(object):
     """
     对MongoDB数据库对象的封装，提供更高功能的接口使用
     """
-    def __init__(self,settings):
+
+    def __init__(self, settings):
         """
         初始化
         :param settings: 数据库设置
         """
-        self.host   = settings['host']
-        self.port   = settings['port']
-        self.user   = settings['user']
+        self.host = settings['host']
+        self.port = settings['port']
+        self.user = settings['user']
         self.passwd = settings['passwd']
-        self.type   = settings['backend']
-        self.db     = settings['database']
+        self.type = settings['backend']
+        self.db = settings['database']
         self.connected = False
-        self.conn    = None
+        self.conn = None
         self.handler = None
-        self.table   = None
+        self.table = None
 
     def connect(self):
         """
         连接MongoDB
         """
         if self.user and self.passwd:
-            self.conn = pymongo.MongoClient(self.host, self.port,username=self.user,password=self.passwd)
+            self.conn = pymongo.MongoClient(self.host, self.port, username=self.user, password=self.passwd)
         else:
             self.conn = pymongo.MongoClient(self.host, self.port)
         self.handler = self.conn[self.db]
@@ -48,16 +52,16 @@ class Database(object):
         关闭数据库连接
         """
         self.conn.close()
-        self.conn=None
+        self.conn = None
 
-    def use_db(self,dbname):
+    def use_db(self, dbname):
         """
         连接数据库后使用名为dbname的数据库
         :param dbname: 要使用的数据库
         """
         self.handler = self.conn[dbname]
 
-    def save(self,data,tname=None,format=None):
+    def save(self, data, tname=None, format=None):
         """
         保存数据到数据集
         :param data: 要保存的数据,{}类型或 [{},{}..]类型
@@ -68,12 +72,12 @@ class Database(object):
         format = None if not isfunction(format) else format
         if not table:
             raise Exception('No table or data collection specified by tname.')
-        if isinstance(data,dict):
+        if isinstance(data, dict):
             data = format(data) if format else data
             self.handler[table].insert(data)
-        elif isinstance(data,list):
+        elif isinstance(data, list):
             for i in data:
-                if isinstance(i,dict):
+                if isinstance(i, dict):
                     i = format(i) if format else i
                     self.handler[table].insert(i)
                 else:
@@ -81,7 +85,7 @@ class Database(object):
         else:
             raise TypeError('Expected a [{},{}..] or {} type data,%s type received.' % type(data))
 
-    def select(self,condition,tname=None,sort=None):
+    def select(self, condition, tname=None, sort=None):
         """
         条件查询数据库得到一个数据列表
         :param condition: 查询条件
@@ -90,12 +94,12 @@ class Database(object):
         :return: 返回查询结果 [{},{},..] 类型
         """
         table = tname if tname else self.table
-        if not isinstance(condition,dict):
+        if not isinstance(condition, dict):
             raise TypeError('condition is not a valid dict type param.')
         else:
             try:
                 conditions = self.__gen_mapped_condition(condition)
-                if sort and isinstance(sort,dict):
+                if sort and isinstance(sort, dict):
                     res = self.handler[table].find(condition).sort(list(sort.items()))
                 else:
                     res = self.handler[table].find(conditions)
@@ -105,7 +109,7 @@ class Database(object):
                 logger.error('Error class : %s , msg : %s ' % (e.__class__, e))
                 return
 
-    def delete(self,condition,tname=None):
+    def delete(self, condition, tname=None):
         """
         删除数据库符合条件的数据条目
         :param condition: 删除条件  dict类型
@@ -114,11 +118,11 @@ class Database(object):
         if not condition: return
         conditions = self.__gen_mapped_condition(condition)
         table = tname if tname else self.table
-        if not isinstance(condition,dict):
+        if not isinstance(condition, dict):
             raise TypeError('condition is not a valid dict type param.')
         self.handler[table].delete_many(conditions)
 
-    def update(self,condition,data,tname=None):
+    def update(self, condition, data, tname=None):
         """
         按照条件更新数据库数据
         :param condition: 查询条件 dict类型
@@ -126,13 +130,13 @@ class Database(object):
         :param tname: 要更新的数据所在的数据集合名
         """
         table = tname if tname else self.table
-        if not data :return
-        if not isinstance(condition, dict) and not isinstance(data,dict):
+        if not data: return
+        if not isinstance(condition, dict) and not isinstance(data, dict):
             raise TypeError('Params (condition and data) should both be the dict type.')
-        conditions= self.__gen_mapped_condition(condition)
-        self.handler[table].update(conditions,{'$set':data},False,True )
+        conditions = self.__gen_mapped_condition(condition)
+        self.handler[table].update(conditions, {'$set': data}, False, True)
 
-    def all(self,tname=None):
+    def all(self, tname=None):
         """
         返回MongoDB数据库某个集合的所有数据
         :param tname: 数据集合名
@@ -142,7 +146,7 @@ class Database(object):
         data = list(self.handler[table].find())
         return data
 
-    def __gen_mapped_condition(self,condition):
+    def __gen_mapped_condition(self, condition):
         """
         MongoDB与sql语句的条件查询映射,使其符合MongoDB语法
         如：查询条件为 {'score':{'<':0}}
